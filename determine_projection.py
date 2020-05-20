@@ -146,28 +146,30 @@ def load_data():
     return data
 
 
-def project(params: MercatorParams, point: LatLon) -> DCSCoord:
-    result = sh.proj(
+def project(params: MercatorParams, points: List[LatLon]) -> List[DCSCoord]:
+    input_str = "\n".join(f"{p[0]}\t{p[1]}" for p in points)
+    stdout = sh.proj(
         '+proj=tmerc',
         f'+k_0={params[0]}',
         f'+lon_0={params[1]}'
         f'+x_0={params[2]}',
         f'+y_0={params[3]}',
-        _in=f"{point[0]}\t{point[1]}",
-    ).stdout
-    parsed = [float(e) for e in result.decode('UTF-8').strip().split('\t')]
-    return DCSCoord(numpy.array(parsed))
+        _in=input_str,
+    ).stdout.decode('UTF-8')
+    result = []
+    for line in stdout.strip().split('\n'):
+        parsed = [float(e) for e in line.strip().split('\t')]
+        result.append(DCSCoord(numpy.array(parsed)))
+    return result
 
 
 def error(x: MercatorParams, data: List[Location]) -> float:
-    sq_err = 0
-    for location in data:
-        try:
-            projected = project(x, location.geodetic)
-        except ValueError:
-            return math.inf
-        location_error = location.ingame - projected
-        sq_err += location_error.dot(location_error)
+    try:
+        projected = project(x, [l.geodetic for l in data])
+    except ValueError:
+        return math.inf
+    errors = [l.ingame - p for l, p in zip(data, projected)]
+    sq_err = sum(err.dot(err) for err in errors)
     return sq_err
 
 
@@ -197,9 +199,10 @@ def main():
         bounds=bounds,
     )
     print(res)
-    for location in data:
-        projected = project(res.x, location.geodetic)
-        print(location.ingame - projected)
+    projected = project(res, [l.geodetic for l in data])
+    errors = [loc.ingame - p for loc, p in zip(data, projected)]
+    for e in errors:
+        print(e)
 
 
 if __name__ == "__main__":
