@@ -95,16 +95,13 @@ import math
 import sh
 import scipy
 import scipy.optimize
-import numpy.random 
-
-rng = numpy.random.default_rng()
 
 
 LatLon = NewType('LatLon', NDArray[(2,), float])
 DCSCoord = NewType('DCSCoord', NDArray[(2,), int])
 
-# k_0, x_0, y_0
-MercatorParams = NewType('MercatorParams', NDArray[(3,), float])
+# k_0, lon_0, x_0, y_0
+MercatorParams = NewType('MercatorParams', NDArray[(4,), float])
 
 
 @dataclasses.dataclass
@@ -153,8 +150,9 @@ def project(params: MercatorParams, point: LatLon) -> DCSCoord:
     result = sh.proj(
         '+proj=tmerc',
         f'+k_0={params[0]}',
-        f'+x_0={params[1]}',
-        f'+y_0={params[2]}',
+        f'+lon_0={params[1]}'
+        f'+x_0={params[2]}',
+        f'+y_0={params[3]}',
         _in=f"{point[0]}\t{point[1]}",
     ).stdout
     parsed = [float(e) for e in result.decode('UTF-8').strip().split('\t')]
@@ -175,35 +173,34 @@ def error(x: MercatorParams, data: List[Location]) -> float:
 
 def main():
     data = load_data()
-    example_params = MercatorParams(numpy.array([0.9996, -99517, -4998115]))
-    x0 = numpy.multiply(rng.random((3,)), numpy.array([1, 500000.0, 500000.0]))
-    bounds = [
-        # k_0 cannot be zero (the poles) and cannot be greater than
-        # one (the equator)
-        (.2, 1.0),
-        # x_0 and y_0 can be anywhere
-        (None, None),
-        (None, None),
-    ]
-    res = scipy.optimize.minimize(
-        fun=error,
-        x0=x0,
-        args=data[:-1],
+    example_params = MercatorParams(numpy.array([0.9996, 33, -99517, -4998115]))
+
+    # We provide very large values, rather than None, for
+    # unconstrained variables becuase some algorithms (e.g. simulated
+    # annealing) can't handle unconstrained variables.
+    earth_circ = 40000000
+    bounds = numpy.array([
+        # k_0 is a scaling factor that has to be larger than 0 but is
+        # otherwise unconstrained.
+        [0.1, 10],
+        # lon_0 is a longitude
+        [-90, 90],
+        # x_0 and y_0 are technically unconstrained, but as the maps
+        # look to be *approximately* in meters we leave it as a
+        # meaningful fraction of the circumference of the earth.
+        [-earth_circ / 10, earth_circ],
+        [-earth_circ / 10, earth_circ],
+    ], dtype=float)
+    res = scipy.optimize.dual_annealing(
+        func=error,
+        args=(data,),
         bounds=bounds,
-        options={
-            # 'iprint': 1,
-        }
     )
-    # print(res)
-    # print(error(x0, data))
-    # print(res.fun)
-    # for location in data:
-    #     projected = project(res.x, location.geodetic)
-    #     print(location.ingame - projected)
-    print(res.x)
-    location = data[-1]
-    projected = project(res.x, location.geodetic)
-    print(location.ingame - projected)
+    print(res)
+    for location in data:
+        projected = project(res.x, location.geodetic)
+        print(location.ingame - projected)
+
 
 if __name__ == "__main__":
     main()
