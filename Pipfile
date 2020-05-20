@@ -12,6 +12,9 @@ scipy = "*"
 pandas = "*"
 sympy = "*"
 nose = "*"
+rednose = "*"
+pytype = "*"
+nptyping = "*"
 
 [requires]
 python_version = "3.7"
