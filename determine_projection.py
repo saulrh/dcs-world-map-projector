@@ -183,9 +183,6 @@ def main():
     data = load_data()
     example_params = MercatorParams(numpy.array([0.9996, 33, -99517, -4998115]))
 
-    # We provide very large values, rather than None, for
-    # unconstrained variables becuase some algorithms (e.g. simulated
-    # annealing) can't handle unconstrained variables.
     earth_circ = 40000000
     bounds = numpy.array(
         [
@@ -194,17 +191,19 @@ def main():
             [0.1, 10],
             # lon_0 is a longitude
             [-90, 90],
-            # x_0 and y_0 are technically unconstrained, but as the maps
-            # look to be *approximately* in meters we leave it as a
-            # meaningful fraction of the circumference of the earth.
+            # x_0 and y_0. We provide very large values, rather than
+            # None, for these unconstrained variables becuase some
+            # algorithms (e.g. simulated annealing) can't handle
+            # unconstrained variables. A large fraction of the
+            # circumference of the earth feels reasonable.
             [-earth_circ / 10, earth_circ],
             [-earth_circ / 10, earth_circ],
         ],
         dtype=float,
     )
-    res = scipy.optimize.dual_annealing(func=error, args=(data,), bounds=bounds,)
+    res = scipy.optimize.differential_evolution(func=error, args=(data,), bounds=bounds,)
     print(res)
-    projected = project(res, [l.geodetic for l in data])
+    projected = project(res.x, [l.geodetic for l in data])
     errors = [loc.ingame - p for loc, p in zip(data, projected)]
     for e in errors:
         print(e)
